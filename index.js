@@ -66,6 +66,22 @@ const ROTAS = [
         destino: 'CUZ',
         ida: '2026-10-20',
         volta: '2026-10-24'
+    },
+    {
+        id: 'Natal-CGH',
+        nome: 'Natalzinho de cria - CGH',
+        origem: 'CGH',
+        destino: 'FOR',
+        ida: '2026-12-23',
+        volta: '2026-12-27'
+    },
+    {
+        id: 'Natal-gru',
+        nome: 'Natalzinho de cria - CGH',
+        origem: 'GRU',
+        destino: 'FOR',
+        ida: '2026-12-23',
+        volta: '2026-12-27'
     }
 ];
 
