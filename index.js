@@ -14,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const TG_TOKEN = process.env.TELEGRAM_TOKEN;
 
-// Carrega permissões do JSON
+// Carrega permissões do JSON (Estratégia de Espelho para Casais/Amigos)
 let GRUPOS = {};
 try {
     GRUPOS = JSON.parse(process.env.TELEGRAM_CONFIG_JSON || '{}');
@@ -23,6 +23,8 @@ try {
     GRUPOS = {};
 }
 const ADMINS = Object.keys(GRUPOS);
+
+// Estado da Sessão (Memória temporária da conversa)
 const userSessions = {};
 
 // ==================================================================
@@ -39,8 +41,9 @@ redis.on('connect', () => console.log('✅ Conectado ao Redis!'));
 const bot = new TelegramBot(TG_TOKEN, { polling: true });
 
 // ==================================================================
-// 3. MENU E FLUXO (MANTIDO IGUAL)
+// 3. MENU PRINCIPAL (TECLADO PERSISTENTE)
 // ==================================================================
+
 const MAIN_KEYBOARD = {
     keyboard: [
         [{ text: '✈️ Nova Viagem' }, { text: '📋 Minhas Viagens' }],
@@ -63,6 +66,10 @@ function mostrarMenuPrincipal(chatId) {
     });
 }
 
+// ==================================================================
+// 4. INTERATIVIDADE (ESCUTA TEXTO E BOTÕES)
+// ==================================================================
+
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id.toString();
     const texto = msg.text;
@@ -70,40 +77,57 @@ bot.on('message', async (msg) => {
     if (!texto || texto.startsWith('/')) return;
     if (!verificarPermissao(chatId)) return;
 
+    // --- A. BOTÕES DO MENU PRINCIPAL ---
     if (texto === '✈️ Nova Viagem') {
         userSessions[chatId] = { step: 'AGUARDANDO_ORIGEM', dados: {} };
         return bot.sendMessage(chatId, "✈️ *Nova Viagem*\n\nQual a sigla da **ORIGEM**? (ex: GRU)", {
-            parse_mode: 'Markdown', reply_markup: { keyboard: [[{ text: '❌ Cancelar' }]], resize_keyboard: true }
+            parse_mode: 'Markdown',
+            reply_markup: { keyboard: [[{ text: '❌ Cancelar' }]], resize_keyboard: true }
         });
     }
-    if (texto === '📋 Minhas Viagens') return listarViagensComBotoes(chatId);
-    if (texto === '❌ Cancelar') return mostrarMenuPrincipal(chatId);
-    if (texto === '❓ Ajuda') return bot.sendMessage(chatId, "💡 *Ajuda*\n\nEu monitoro preços no Google Flights.", { parse_mode: 'Markdown' });
 
+    if (texto === '📋 Minhas Viagens') {
+        return listarViagensComBotoes(chatId);
+    }
+
+    if (texto === '❌ Cancelar') {
+        return mostrarMenuPrincipal(chatId);
+    }
+
+    if (texto === '❓ Ajuda') {
+        return bot.sendMessage(chatId, "💡 *Ajuda*\n\nEu monitoro preços no Google Flights.\nCadastre uma rota e eu te aviso quando o preço baixar!", { parse_mode: 'Markdown' });
+    }
+
+    // --- B. FLUXO DE PERGUNTAS (CADASTRO) ---
     if (userSessions[chatId]) {
         const session = userSessions[chatId];
+
         if (session.step === 'AGUARDANDO_ORIGEM') {
-            if (texto.length !== 3) return bot.sendMessage(chatId, "⚠️ Sigla inválida (3 letras).");
+            if (texto.length !== 3) return bot.sendMessage(chatId, "⚠️ Sigla inválida. Use 3 letras (Ex: GRU).");
             session.dados.origem = texto.toUpperCase();
             session.step = 'AGUARDANDO_DESTINO';
-            bot.sendMessage(chatId, `✅ Origem: ${session.dados.origem}\n\nQual o **DESTINO**?`);
-        } else if (session.step === 'AGUARDANDO_DESTINO') {
-            if (texto.length !== 3) return bot.sendMessage(chatId, "⚠️ Sigla inválida (3 letras).");
+            bot.sendMessage(chatId, `✅ Origem: ${session.dados.origem}\n\nQual o **DESTINO**? (ex: MIA)`);
+        }
+        else if (session.step === 'AGUARDANDO_DESTINO') {
+            if (texto.length !== 3) return bot.sendMessage(chatId, "⚠️ Sigla inválida. Use 3 letras (Ex: MIA).");
             session.dados.destino = texto.toUpperCase();
             session.step = 'AGUARDANDO_IDA';
             bot.sendMessage(chatId, `✅ Destino: ${session.dados.destino}\n\nQual a data de **IDA**? (AAAA-MM-DD)`);
-        } else if (session.step === 'AGUARDANDO_IDA') {
-            if (!validarData(texto)) return bot.sendMessage(chatId, "⚠️ Data inválida (AAAA-MM-DD).");
+        }
+        else if (session.step === 'AGUARDANDO_IDA') {
+            if (!validarData(texto)) return bot.sendMessage(chatId, "⚠️ Formato inválido. Use AAAA-MM-DD (ex: 2026-10-10).");
             session.dados.ida = texto;
             session.step = 'AGUARDANDO_VOLTA';
-            bot.sendMessage(chatId, `✅ Ida: ${texto}\n\nQual a data de **VOLTA**?`);
-        } else if (session.step === 'AGUARDANDO_VOLTA') {
-            if (!validarData(texto)) return bot.sendMessage(chatId, "⚠️ Data inválida.");
+            bot.sendMessage(chatId, `✅ Ida: ${texto}\n\nQual a data de **VOLTA**? (AAAA-MM-DD)`);
+        }
+        else if (session.step === 'AGUARDANDO_VOLTA') {
+            if (!validarData(texto)) return bot.sendMessage(chatId, "⚠️ Formato inválido. Use AAAA-MM-DD.");
             session.dados.volta = texto;
             await finalizarCadastro(chatId, session);
         }
         return;
     }
+
     mostrarMenuPrincipal(chatId);
 });
 
@@ -115,18 +139,28 @@ bot.on('callback_query', async (callback) => {
     if (data.startsWith('btn_apagar_')) {
         const index = parseInt(data.split('_')[2]);
         await apagarViagem(chatId, index);
-    } else if (data.startsWith('btn_editar_')) {
+    }
+    else if (data.startsWith('btn_editar_')) {
         const index = parseInt(data.split('_')[2]);
         userSessions[chatId] = { step: 'AGUARDANDO_ORIGEM', dados: {}, editandoIndex: index };
-        bot.sendMessage(chatId, "✏️ *Editando*\n\nQual a nova **ORIGEM**?", {
-            parse_mode: 'Markdown', reply_markup: { keyboard: [[{ text: '❌ Cancelar' }]], resize_keyboard: true }
+        bot.sendMessage(chatId, "✏️ *Editando Viagem*\n\nQual a nova **ORIGEM**? (ex: GRU)", {
+            parse_mode: 'Markdown',
+            reply_markup: { keyboard: [[{ text: '❌ Cancelar' }]], resize_keyboard: true }
         });
     }
 });
 
-// Funções Auxiliares
-function verificarPermissao(chatId) { return ADMINS.includes(chatId.toString()); }
-function validarData(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d); }
+// ==================================================================
+// 5. FUNÇÕES AUXILIARES
+// ==================================================================
+
+function verificarPermissao(chatId) {
+    return ADMINS.includes(chatId.toString());
+}
+
+function validarData(d) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(d);
+}
 
 async function finalizarCadastro(chatId, session) {
     const { origem, destino, ida, volta } = session.dados;
@@ -142,11 +176,11 @@ async function finalizarCadastro(chatId, session) {
             delete historico[rotas[indiceReal].id];
             await redis.set('historico_precos', JSON.stringify(historico));
             rotas[indiceReal] = novaRota;
-            bot.sendMessage(chatId, "🔄 Atualizado!", { reply_markup: MAIN_KEYBOARD });
+            bot.sendMessage(chatId, "🔄 Viagem atualizada!", { reply_markup: MAIN_KEYBOARD });
         }
     } else {
         rotas.push(novaRota);
-        bot.sendMessage(chatId, "💾 Salvo!", { reply_markup: MAIN_KEYBOARD });
+        bot.sendMessage(chatId, "💾 Viagem salva e monitorada!", { reply_markup: MAIN_KEYBOARD });
     }
     await redis.set('banco_rotas', JSON.stringify(rotas));
     delete userSessions[chatId];
@@ -155,25 +189,34 @@ async function finalizarCadastro(chatId, session) {
 async function listarViagensComBotoes(chatId) {
     const rotas = JSON.parse(await redis.get('banco_rotas') || '[]');
     const minhasRotas = rotas.filter(r => r.dono === chatId);
-    if (minhasRotas.length === 0) return bot.sendMessage(chatId, "📭 Nada cadastrado.", { reply_markup: MAIN_KEYBOARD });
+
+    if (minhasRotas.length === 0) {
+        return bot.sendMessage(chatId, "📭 Nenhuma viagem cadastrada.", { reply_markup: MAIN_KEYBOARD });
+    }
     bot.sendMessage(chatId, "📋 *Suas Viagens:*", { parse_mode: 'Markdown', reply_markup: MAIN_KEYBOARD });
+
     for (let i = 0; i < minhasRotas.length; i++) {
         const r = minhasRotas[i];
         await bot.sendMessage(chatId, `✈️ *${r.origem} ➡️ ${r.destino}*\n📅 ${r.ida} a ${r.volta}`, {
             parse_mode: 'Markdown',
             reply_markup: {
-                inline_keyboard: [[{ text: '✏️ Editar', callback_data: `btn_editar_${i}` }, { text: '🗑️ Apagar', callback_data: `btn_apagar_${i}` }]]
+                inline_keyboard: [[
+                    { text: '✏️ Editar', callback_data: `btn_editar_${i}` },
+                    { text: '🗑️ Apagar', callback_data: `btn_apagar_${i}` }
+                ]]
             }
         });
         await new Promise(r => setTimeout(r, 200));
     }
 }
 
-async function apagarViagem(chatId, index) {
+async function apagarViagem(chatId, indexUsuario) {
     let rotas = JSON.parse(await redis.get('banco_rotas') || '[]');
     const meusIndices = rotas.map((r, i) => r.dono === chatId ? i : -1).filter(i => i !== -1);
-    if (index >= 0 && index < meusIndices.length) {
-        const [removida] = rotas.splice(meusIndices[index], 1);
+
+    if (indexUsuario >= 0 && indexUsuario < meusIndices.length) {
+        const indiceReal = meusIndices[indexUsuario];
+        const [removida] = rotas.splice(indiceReal, 1);
         await redis.set('banco_rotas', JSON.stringify(rotas));
         let historico = JSON.parse(await redis.get('historico_precos') || '{}');
         delete historico[removida.id];
@@ -184,29 +227,37 @@ async function apagarViagem(chatId, index) {
 }
 
 // ==================================================================
-// 6. MONITORAMENTO ORACLE ARM (CHROMIUM)
+// 6. MONITORAMENTO (HEADLESS / KOYEB)
 // ==================================================================
 async function monitorarViagens() {
-    console.log('🚀 Iniciando monitoramento...');
+    console.log('🚀 Iniciando ciclo de monitoramento...');
+
     let rotas = [];
     try {
-        const dados = await redis.get('banco_rotas');
-        rotas = JSON.parse(dados || '[]');
-    } catch (e) { return console.error('❌ Redis:', e.message); }
+        const dadosBanco = await redis.get('banco_rotas');
+        rotas = JSON.parse(dadosBanco || '[]');
+    } catch (e) {
+        console.error('❌ Redis:', e.message);
+        return;
+    }
 
     if (rotas.length === 0) return console.log('💤 Banco vazio.');
 
-    // CONFIGURAÇÃO ESPECÍFICA PARA ORACLE/DOCKER
+    // MODO PRODUÇÃO: HEADLESS "NEW"
+    // Compatível com Koyeb (Linux) e Windows
     const browser = await puppeteer.launch({
         headless: "new",
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', // Vital para Docker/VPS
+            '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--no-first-run'
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-extensions'
         ],
-        // Prioriza a variável de ambiente (definida no Dockerfile)
+        // O SEGREDO DO KOYEB: 
+        // Se a variável existir (no Koyeb), usa ela. Se não (no Windows), usa padrão.
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     });
 
@@ -214,14 +265,16 @@ async function monitorarViagens() {
 
     try {
         const page = await browser.newPage();
-        // User Agent para enganar o Google
-        await page.setUserAgent('Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
 
         for (const rota of rotas) {
-            console.log(`🔎 ${rota.origem}->${rota.destino}`);
+            console.log(`🔎 Checando: ${rota.origem}->${rota.destino}`);
+
+            // LINK CORRIGIDO QUE FUNCIONA
             const url = `https://www.google.com/travel/flights?q=Flights%20to%20${rota.destino}%20from%20${rota.origem}%20on%20${rota.ida}%20through%20${rota.volta}&curr=BRL&hl=pt-BR`;
 
             try {
+                // Timeout padrão para produção (60s)
                 await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
                 const resultado = await page.evaluate(() => {
@@ -233,35 +286,61 @@ async function monitorarViagens() {
                     return { precoTexto: precoMatch ? precoMatch[0] : null, cia };
                 });
 
-                if (resultado && resultado.precoTexto) {
-                    const precoAtual = parseFloat(resultado.precoTexto.replace(/[^\d,]/g, '').replace(',', '.'));
-                    console.log(`💰 R$ ${precoAtual}`);
-
-                    const precoAntigo = dbPrecos[rota.id] || Infinity;
-                    let notificar = false, titulo = "";
-
-                    if (!dbPrecos[rota.id]) {
-                        notificar = true; titulo = "🆕 *Monitor Iniciado*"; dbPrecos[rota.id] = precoAtual;
-                    } else if (precoAtual < precoAntigo) {
-                        notificar = true; titulo = `📉 *BAIXOU! R$ ${(precoAntigo - precoAtual).toFixed(2)} a menos*`; dbPrecos[rota.id] = precoAtual;
-                    } else if (precoAtual > precoAntigo) dbPrecos[rota.id] = precoAtual;
-
-                    if (notificar) {
-                        let msg = `${titulo}\n\n✈️ ${rota.origem} ➡️ ${rota.destino}\n📅 ${rota.ida} a ${rota.volta}\n💰 *R$ ${precoAtual}*\n🏢 ${resultado.cia}\n🔗 [Ver no Google](${url})`;
-                        const destinatarios = GRUPOS[rota.dono] || [rota.dono];
-                        for (const id of destinatarios) try { await bot.sendMessage(id, msg, { parse_mode: 'Markdown', disable_web_page_preview: true }); } catch (e) { }
-                    }
-                } else {
+                if (!resultado || !resultado.precoTexto) {
                     console.log('⚠️ Preço não encontrado.');
+                    continue;
                 }
-                await new Promise(r => setTimeout(r, 4000));
-            } catch (erroRota) { console.error(`Erro Rota: ${erroRota.message}`); }
+
+                const precoAtual = parseFloat(resultado.precoTexto.replace(/[^\d,]/g, '').replace(',', '.'));
+                console.log(`💰 R$ ${precoAtual}`);
+
+                const precoAntigo = dbPrecos[rota.id] || Infinity;
+                let notificar = false, titulo = "";
+
+                if (!dbPrecos[rota.id]) {
+                    notificar = true; titulo = "🆕 *Monitor Iniciado*"; dbPrecos[rota.id] = precoAtual;
+                } else if (precoAtual < precoAntigo) {
+                    notificar = true; titulo = `📉 *BAIXOU! R$ ${(precoAntigo - precoAtual).toFixed(2)} a menos*`; dbPrecos[rota.id] = precoAtual;
+                } else if (precoAtual > precoAntigo) {
+                    dbPrecos[rota.id] = precoAtual;
+                }
+
+                if (notificar) {
+                    let msg = `${titulo}\n\n✈️ ${rota.origem} ➡️ ${rota.destino}\n📅 ${rota.ida} a ${rota.volta}\n💰 *R$ ${precoAtual}*\n🏢 ${resultado.cia}\n🔗 [Ver no Google](${url})`;
+
+                    const destinatarios = GRUPOS[rota.dono] || [];
+                    // Fallback: se não tiver grupo, manda pro dono
+                    if (destinatarios.length === 0) destinatarios.push(rota.dono);
+
+                    for (const id of destinatarios) {
+                        try { await bot.sendMessage(id, msg, { parse_mode: 'Markdown', disable_web_page_preview: true }); }
+                        catch (e) { console.error(`Erro envio msg: ${e.message}`); }
+                    }
+                }
+
+                // Delay pequeno de segurança para não ser bloqueado (3 segundos)
+                await new Promise(r => setTimeout(r, 3000));
+
+            } catch (erroRota) {
+                console.error(`Erro Rota: ${erroRota.message}`);
+            }
         }
         await redis.set('historico_precos', JSON.stringify(dbPrecos));
-    } catch (error) { console.error('Erro Geral:', error); }
-    finally { if (browser) await browser.close(); console.log('🏁 Fim.'); }
+
+    } catch (error) {
+        console.error('Erro Geral:', error);
+    } finally {
+        if (browser) await browser.close();
+        console.log('🏁 Ciclo finalizado.');
+    }
 }
 
-app.get('/', (req, res) => res.send('🤖 Bot Oracle ARM Ativo.'));
-app.get('/rodar', async (req, res) => { res.send('Rodando...'); monitorarViagens(); });
-app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
+// ==================================================================
+// 7. SERVIDOR WEB
+// ==================================================================
+app.get('/', (req, res) => res.send('🤖 Bot de Passagens ONLINE.'));
+app.get('/rodar', async (req, res) => {
+    res.send('Processo disparado em background.');
+    monitorarViagens();
+});
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
