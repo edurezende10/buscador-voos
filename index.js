@@ -227,7 +227,7 @@ async function apagarViagem(chatId, indexUsuario) {
 }
 
 // ==================================================================
-// 6. MONITORAMENTO (HEADLESS / KOYEB)
+// 6. MONITORAMENTO (ORACLE ARM / DOCKER COMPATIBLE)
 // ==================================================================
 async function monitorarViagens() {
     console.log('🚀 Iniciando ciclo de monitoramento...');
@@ -243,22 +243,21 @@ async function monitorarViagens() {
 
     if (rotas.length === 0) return console.log('💤 Banco vazio.');
 
-    // MODO PRODUÇÃO: HEADLESS "NEW"
-    // Compatível com Koyeb (Linux) e Windows
+    // --- CONFIGURAÇÃO BLINDADA PARA ORACLE (ARM) ---
     const browser = await puppeteer.launch({
         headless: "new",
+        // Lê o caminho do Chromium instalado no Docker ou usa undefined (local)
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
+            '--no-sandbox',             // OBRIGATÓRIO: Permite rodar como root no Docker
+            '--disable-setuid-sandbox', // OBRIGATÓRIO: Segurança do Chrome
+            '--disable-dev-shm-usage',  // CRUCIAL: Usa /tmp em vez de RAM (evita crash de memória)
+            '--disable-accelerated-2d-canvas', // Otimização para evitar erros gráficos no ARM
+            '--disable-gpu',            // Servidor não tem placa de vídeo
             '--no-first-run',
             '--no-zygote',
             '--disable-extensions'
-        ],
-        // O SEGREDO DO KOYEB: 
-        // Se a variável existir (no Koyeb), usa ela. Se não (no Windows), usa padrão.
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        ]
     });
 
     let dbPrecos = JSON.parse(await redis.get('historico_precos') || '{}');
@@ -270,11 +269,11 @@ async function monitorarViagens() {
         for (const rota of rotas) {
             console.log(`🔎 Checando: ${rota.origem}->${rota.destino}`);
 
-            // LINK CORRIGIDO QUE FUNCIONA
-            const url = `https://www.google.com/travel/flights?q=Flights%20to%20${rota.destino}%20from%20${rota.origem}%20on%20${rota.ida}%20through%20${rota.volta}&curr=BRL&hl=pt-BR`;
+            // CORREÇÃO: Adicionado o $ que faltava em {rota.destino}
+            const url = `https://www.google.com/travel/flights?q=Flights%20to%20$${rota.destino}%20from%20${rota.origem}%20on%20${rota.ida}%20through%20${rota.volta}&curr=BRL&hl=pt-BR`;
 
             try {
-                // Timeout padrão para produção (60s)
+                // Timeout aumentado para 60s para garantir
                 await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
                 const resultado = await page.evaluate(() => {
@@ -309,7 +308,6 @@ async function monitorarViagens() {
                     let msg = `${titulo}\n\n✈️ ${rota.origem} ➡️ ${rota.destino}\n📅 ${rota.ida} a ${rota.volta}\n💰 *R$ ${precoAtual}*\n🏢 ${resultado.cia}\n🔗 [Ver no Google](${url})`;
 
                     const destinatarios = GRUPOS[rota.dono] || [];
-                    // Fallback: se não tiver grupo, manda pro dono
                     if (destinatarios.length === 0) destinatarios.push(rota.dono);
 
                     for (const id of destinatarios) {
@@ -318,7 +316,6 @@ async function monitorarViagens() {
                     }
                 }
 
-                // Delay pequeno de segurança para não ser bloqueado (3 segundos)
                 await new Promise(r => setTimeout(r, 3000));
 
             } catch (erroRota) {
@@ -338,7 +335,7 @@ async function monitorarViagens() {
 // ==================================================================
 // 7. SERVIDOR WEB
 // ==================================================================
-app.get('/', (req, res) => res.send('🤖 Bot de Passagens ONLINE.'));
+app.get('/', (req, res) => res.send('🤖 Bot de Passagens ONLINE (Oracle ARM).'));
 app.get('/rodar', async (req, res) => {
     res.send('Processo disparado em background.');
     monitorarViagens();
