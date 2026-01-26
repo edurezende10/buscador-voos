@@ -13,8 +13,13 @@ async function getTrip(id) {
 }
 
 async function deleteTrip(id) {
-    // Cascade delete handles priceHistory
-    return await prisma.trip.delete({ where: { id } });
+    try {
+        // Cascade delete handles priceHistory
+        return await prisma.trip.delete({ where: { id } });
+    } catch (e) {
+        if (e.code === 'P2025') return null; // Already deleted
+        throw e;
+    }
 }
 
 async function getHistory(tripId) {
