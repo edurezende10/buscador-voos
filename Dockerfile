@@ -24,4 +24,4 @@ RUN npx prisma generate
 EXPOSE 3000
 
 # Confirme se seu arquivo principal é index.js mesmo, senão mude aqui
-CMD ["node", "index.js"]
+CMD ["npm", "start"]
