@@ -126,14 +126,32 @@ async function listarViagens(chatId, user) {
 
     for (const t of trips) {
         const preco = t.lastPrice ? `R$ ${t.lastPrice}` : "???";
-        await bot.sendMessage(chatId, `✈️ *${t.origin} ➡️ ${t.dest}*\n📅 ${t.dateOut} a ${t.dateBack}\n💰 Último: ${preco}`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🗑️ Apagar', callback_data: `btn_apagar_${t.id}` }, { text: '📈 Histórico', callback_data: `btn_hist_${t.id}` }]
-                ]
+        const url = `https://www.google.com/travel/flights?q=${t.origin}%20${t.dest}%20${t.dateOut}%20${t.dateBack}&curr=BRL&hl=pt-BR`;
+
+        let infoData = "Nunca verificado";
+        if (t.lastCheck) {
+            infoData = new Date(t.lastCheck).toLocaleString('pt-BR', {
+                timeZone: 'America/Sao_Paulo',
+                day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        await bot.sendMessage(chatId,
+            `✈️ *${t.origin} ➡️ ${t.dest}*\n` +
+            `📅 ${t.dateOut} a ${t.dateBack}\n` +
+            `💰 Último: ${preco}\n` +
+            `🕒 Verificado em: ${infoData}\n` +
+            `🔗 [Comprar no Google](${url})`,
+            {
+                parse_mode: 'Markdown',
+                disable_web_page_preview: true,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🗑️ Apagar', callback_data: `btn_apagar_${t.id}` }, { text: '📈 Histórico', callback_data: `btn_hist_${t.id}` }]
+                    ]
+                }
             }
-        });
+        );
         await new Promise(r => setTimeout(r, 100));
     }
 }

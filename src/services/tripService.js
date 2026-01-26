@@ -40,7 +40,10 @@ async function savePrice(tripId, price) {
     // Update Trip lastPrice
     await prisma.trip.update({
         where: { id: tripId },
-        data: { lastPrice: price }
+        data: {
+            lastPrice: price,
+            lastCheck: new Date()
+        }
     });
 
     // Add History
