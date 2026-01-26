@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "start": "cp schema.prisma prisma/schema.prisma && npx prisma db push && node scripts/migrateRedis.js && node index.js"
+    "start": "cp schema.prisma prisma/schema.prisma && npx prisma db push && node scripts/migrateRedis.js && node scripts/cleanupDuplicates.js && node index.js"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

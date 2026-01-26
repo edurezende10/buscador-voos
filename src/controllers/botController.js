@@ -46,6 +46,7 @@ function init() {
         if (texto === '📋 Minhas Viagens') return listarViagens(chatId, user);
         if (texto === '❌ Cancelar') return mostrarMenuPrincipal(chatId);
         if (texto === '❓ Ajuda') return bot.sendMessage(chatId, "💡 *Ajuda*\n\nMonitoro preços no Google Flights.", { parse_mode: 'Markdown' });
+        if (texto === '/ping') return bot.sendMessage(chatId, "🏓 Pong! Estou online e te ouvindo.");
 
         if (userSessions[chatId]) {
             handleSession(chatId, texto, user);
