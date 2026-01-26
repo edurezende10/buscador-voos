@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Group {
+  id    String @id @default(uuid())
+  name  String @unique
+  users User[]
+  trips Trip[]
+}
+
+model User {
+  telegramId String @id
+  name       String?
+  // Relation to Group
+  group      Group? @relation(fields: [groupId], references: [id])
+  groupId    String?
+}
+
+model Trip {
+  id        String   @id @default(uuid())
+  origin    String
+  dest      String
+  // Dates stored as String YYYY-MM-DD for simplicity
+  dateOut   String
+  dateBack  String
+  active    Boolean  @default(true)
+  lastPrice Float?
+  
+  // Relation to Group
+  group     Group    @relation(fields: [groupId], references: [id])
+  groupId   String
+
+  // Relation to PriceHistory
+  prices    PriceHistory[]
+}
+
+model PriceHistory {
+  id        String   @id @default(uuid())
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  price     Float
+  date      DateTime @default(now())
+}

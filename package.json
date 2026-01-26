@@ -1,13 +1,19 @@
 {
+  "scripts": {
+    "start": "npx prisma db push && node index.js"
+  },
   "dependencies": {
+    "@prisma/client": "^5.10.0",
     "@upstash/redis": "^1.36.0",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "ioredis": "^5.9.0",
     "node-telegram-bot-api": "^0.67.0",
+    "prisma": "^5.10.0",
     "puppeteer": "^24.34.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "quickchart-js": "^3.1.3"
   }
 }
