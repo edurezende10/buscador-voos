@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "start": "npx prisma db push && node index.js"
+    "start": "cp schema.prisma prisma/schema.prisma && npx prisma db push && node index.js"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
